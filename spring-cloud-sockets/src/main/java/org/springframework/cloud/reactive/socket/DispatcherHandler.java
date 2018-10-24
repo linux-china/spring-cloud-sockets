@@ -18,23 +18,15 @@
 package org.springframework.cloud.reactive.socket;
 
 
-
-import java.io.IOException;
-import java.util.LinkedList;
-import java.util.List;
-
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.rsocket.AbstractRSocket;
 import io.rsocket.Payload;
-import io.rsocket.exceptions.ApplicationException;
-import io.rsocket.util.PayloadImpl;
+import io.rsocket.exceptions.ApplicationErrorException;
+import io.rsocket.util.DefaultPayload;
 import org.reactivestreams.Publisher;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import reactor.core.publisher.Flux;
-import reactor.core.publisher.Mono;
-
 import org.springframework.beans.BeansException;
 import org.springframework.beans.factory.BeanFactoryUtils;
 import org.springframework.beans.factory.InitializingBean;
@@ -49,165 +41,174 @@ import org.springframework.core.annotation.AnnotatedElementUtils;
 import org.springframework.util.ClassUtils;
 import org.springframework.util.MimeType;
 import org.springframework.util.ReflectionUtils;
+import reactor.core.publisher.Flux;
+import reactor.core.publisher.Mono;
+
+import java.io.IOException;
+import java.util.LinkedList;
+import java.util.List;
 
 import static org.springframework.cloud.reactive.socket.util.ServiceUtils.getActualType;
+
 /**
  * @author Vinicius Carvalho
  */
 public class DispatcherHandler extends AbstractRSocket implements ApplicationContextAware, InitializingBean {
 
-	private ApplicationContext applicationContext;
+    private ApplicationContext applicationContext;
 
-	private List<MethodHandler> mappingHandlers = new LinkedList<>();
+    private List<MethodHandler> mappingHandlers = new LinkedList<>();
 
-	private ObjectMapper mapper = new ObjectMapper();
+    private ObjectMapper mapper = new ObjectMapper();
 
-	private Logger logger = LoggerFactory.getLogger(getClass());
+    private Logger logger = LoggerFactory.getLogger(getClass());
 
-	private List<Converter> converters = new LinkedList<>();
+    private List<Converter> converters = new LinkedList<>();
 
-	@Override
-	public void setApplicationContext(ApplicationContext applicationContext) throws BeansException {
-		this.applicationContext = applicationContext;
-	}
+    @Override
+    public void setApplicationContext(ApplicationContext applicationContext) throws BeansException {
+        this.applicationContext = applicationContext;
+    }
 
-	private void initDefaultConverters() {
-		this.converters.add(new JacksonConverter());
-		this.converters.add(new SerializableConverter());
-	}
-
-
-	@Override
-	public void afterPropertiesSet() throws Exception {
-		String[] beanNames = BeanFactoryUtils.beanNamesForTypeIncludingAncestors(this.applicationContext, Object.class);
-		for(String beanName : beanNames){
-			Class<?> beanType = this.applicationContext.getType(beanName);
-			if(beanType != null){
-				final Class<?> userType = ClassUtils.getUserClass(beanType);
-				ReflectionUtils.doWithMethods(userType, method -> {
-					if(AnnotatedElementUtils.findMergedAnnotation(method, ReactiveSocket.class) != null) {
-						ServiceMethodInfo info = new ServiceMethodInfo(method);
-						logger.info("Registering remote endpoint at path {}, exchange {} for method {}", info.getMappingInfo().getPath(), info.getMappingInfo().getExchangeMode(), method);
-						MethodHandler methodHandler = new MethodHandler(applicationContext.getBean(beanName), info);
-						mappingHandlers.add(methodHandler);
-					}
-				});
-			}
-		}
-		initDefaultConverters();
-	}
-
-	private JsonNode readConnectionMetadata(String metadata){
-		try {
-			return mapper.readValue(metadata, JsonNode.class);
-		}
-		catch (IOException e) {
-			throw new IllegalStateException("Could not read metadata from client");
-		}
-	}
-
-	@Override
-	public Mono<Void> fireAndForget(Payload payload) {
-		JsonNode metadata = readConnectionMetadata(payload.getMetadataUtf8());
+    private void initDefaultConverters() {
+        this.converters.add(new JacksonConverter());
+        this.converters.add(new SerializableConverter());
+    }
 
 
-		try{
-			MethodHandler handler = handlerFor(metadata);
-			Converter converter = converterFor(MimeType.valueOf(metadata.get("MIME_TYPE").textValue()));
-			Object converted = converter.read(ServiceUtils.toByteArray(payload.getData()), getActualType(handler.getInfo().getParameterType()));
-			handler.invoke(handler.getInfo().buildInvocationArguments(converted, null));
-			return Mono.empty();
-		}catch (Exception e){
-			return Mono.error(e);
-		}
+    @Override
+    public void afterPropertiesSet() throws Exception {
+        String[] beanNames = BeanFactoryUtils.beanNamesForTypeIncludingAncestors(this.applicationContext, Object.class);
+        for (String beanName : beanNames) {
+            Class<?> beanType = this.applicationContext.getType(beanName);
+            if (beanType != null) {
+                final Class<?> userType = ClassUtils.getUserClass(beanType);
+                ReflectionUtils.doWithMethods(userType, method -> {
+                    if (AnnotatedElementUtils.findMergedAnnotation(method, ReactiveSocket.class) != null) {
+                        ServiceMethodInfo info = new ServiceMethodInfo(method);
+                        logger.info("Registering remote endpoint at path {}, exchange {} for method {}", info.getMappingInfo().getPath(), info.getMappingInfo().getExchangeMode(), method);
+                        MethodHandler methodHandler = new MethodHandler(applicationContext.getBean(beanName), info);
+                        mappingHandlers.add(methodHandler);
+                    }
+                });
+            }
+        }
+        initDefaultConverters();
+    }
 
-	}
+    private JsonNode readConnectionMetadata(String metadata) {
+        try {
+            return mapper.readValue(metadata, JsonNode.class);
+        } catch (IOException e) {
+            throw new IllegalStateException("Could not read metadata from client");
+        }
+    }
 
-	@Override
-	public Mono<Payload> requestResponse(Payload payload) {
-		JsonNode metadata = readConnectionMetadata(payload.getMetadataUtf8());
-		try {
-			MethodHandler handler = handlerFor(metadata);
-			Converter converter = converterFor(MimeType.valueOf(metadata.get("MIME_TYPE").textValue()));
-			Object converted = converter.read(ServiceUtils.toByteArray(payload.getData()), getActualType(handler.getInfo().getParameterType()));
-			Object result = handler.invoke(handler.getInfo().buildInvocationArguments(converted, null));
-			Mono monoResult = monoOF(result);
-			return monoResult.map(o -> {
-				byte[] data = converter.write(o);
-				return new PayloadImpl(data);
-			});
-
-		}catch (Exception e){
-			return Mono.error(e);
-		}
-	}
-
-	@Override
-	public Flux<Payload> requestStream(Payload payload) {
-		JsonNode metadata = readConnectionMetadata(payload.getMetadataUtf8());
-		try {
-			MethodHandler handler = handlerFor(metadata);
-			Converter converter = converterFor(MimeType.valueOf(metadata.get("MIME_TYPE").textValue()));
-			Object converted = converter.read(ServiceUtils.toByteArray(payload.getData()), getActualType(handler.getInfo().getParameterType()));
-			Flux result = (Flux)handler.invoke(handler.getInfo().buildInvocationArguments(converted, null));
-			return result.map(o ->
-				new PayloadImpl(converter.write(o))
-			);
-
-		} catch (Exception e){
-			return Flux.error(new ApplicationException("No path found for " + metadata.get("PATH").asText()));
-		}
-	}
-
-	private Mono monoOF(Object argument){
-
-		if(argument.getClass().isAssignableFrom(Mono.class)){
-			return (Mono)argument;
-		}else{
-			return Mono.just(argument);
-		}
-
-	}
-
-	@Override
-	public Flux<Payload> requestChannel(Publisher<Payload> payloads) {
-		Flux<Payload> flux = Flux.from(payloads);
-		Payload headerPayload = flux.take(1).next().block();
-		JsonNode metadata = readConnectionMetadata(headerPayload.getMetadataUtf8());
-		try{
-			MethodHandler handler = handlerFor(metadata);
-			Converter converter = converterFor(MimeType.valueOf(metadata.get("MIME_TYPE").textValue()));
-			Flux converted = flux.repeat().map(payload -> {
-				return converter.read(ServiceUtils.toByteArray(payload.getData()), getActualType( handler.getInfo().getParameterType()));
-			});
-			Flux result = (Flux)handler.invoke(handler.getInfo().buildInvocationArguments(converted, null));
-			return result.map(o ->
-					new PayloadImpl(converter.write(o))
-			);
-		}catch (Exception e){
-			return Flux.error(e);
-		}
-	}
+    @Override
+    public Mono<Void> fireAndForget(Payload payload) {
+        JsonNode metadata = readConnectionMetadata(payload.getMetadataUtf8());
 
 
+        try {
+            MethodHandler handler = handlerFor(metadata);
+            Converter converter = converterFor(MimeType.valueOf(metadata.get("MIME_TYPE").textValue()));
+            Object converted = converter.read(ServiceUtils.toByteArray(payload.getData()), getActualType(handler.getInfo().getParameterType()));
+            handler.invoke(handler.getInfo().buildInvocationArguments(converted, null));
+            return Mono.empty();
+        } catch (Exception e) {
+            return Mono.error(e);
+        }
 
-	private Converter converterFor(MimeType mimeType){
-		return this.converters
-				.stream()
-				.filter(binaryConverter -> binaryConverter.accept(mimeType))
-				.findFirst()
-				.orElseThrow(IllegalStateException::new);
-	}
+    }
 
-	private MethodHandler handlerFor(JsonNode metadata){
-		return this.mappingHandlers
-				.stream()
-				.filter(methodHandler -> { return methodHandler
-						.getInfo()
-						.getMappingInfo()
-						.getPath().equals(metadata.get("PATH").asText()); })
-				.findFirst()
-				.orElseThrow(() -> { return new ApplicationException("No handler found");} );
-	}
+    @Override
+    public Mono<Payload> requestResponse(Payload payload) {
+        JsonNode metadata = readConnectionMetadata(payload.getMetadataUtf8());
+        try {
+            MethodHandler handler = handlerFor(metadata);
+            Converter converter = converterFor(MimeType.valueOf(metadata.get("MIME_TYPE").textValue()));
+            Object converted = converter.read(ServiceUtils.toByteArray(payload.getData()), getActualType(handler.getInfo().getParameterType()));
+            Object result = handler.invoke(handler.getInfo().buildInvocationArguments(converted, null));
+            Mono monoResult = monoOF(result);
+            return monoResult.map(o -> {
+                byte[] data = converter.write(o);
+                return DefaultPayload.create(data);
+            });
+
+        } catch (Exception e) {
+            return Mono.error(e);
+        }
+    }
+
+    @Override
+    public Flux<Payload> requestStream(Payload payload) {
+        JsonNode metadata = readConnectionMetadata(payload.getMetadataUtf8());
+        try {
+            MethodHandler handler = handlerFor(metadata);
+            Converter converter = converterFor(MimeType.valueOf(metadata.get("MIME_TYPE").textValue()));
+            Object converted = converter.read(ServiceUtils.toByteArray(payload.getData()), getActualType(handler.getInfo().getParameterType()));
+            Flux result = (Flux) handler.invoke(handler.getInfo().buildInvocationArguments(converted, null));
+            return result.map(o ->
+                    DefaultPayload.create(converter.write(o))
+            );
+
+        } catch (Exception e) {
+            return Flux.error(new ApplicationErrorException("No path found for " + metadata.get("PATH").asText()));
+        }
+    }
+
+    private Mono monoOF(Object argument) {
+
+        if (argument.getClass().isAssignableFrom(Mono.class)) {
+            return (Mono) argument;
+        } else {
+            return Mono.just(argument);
+        }
+
+    }
+
+    @Override
+    public Flux<Payload> requestChannel(Publisher<Payload> payloads) {
+        Flux<Payload> flux = Flux.from(payloads);
+        Payload headerPayload = flux.take(1).next().block();
+        JsonNode metadata = readConnectionMetadata(headerPayload.getMetadataUtf8());
+        try {
+            MethodHandler handler = handlerFor(metadata);
+            Converter converter = converterFor(MimeType.valueOf(metadata.get("MIME_TYPE").textValue()));
+            Flux converted = flux.repeat().map(payload -> {
+                return converter.read(ServiceUtils.toByteArray(payload.getData()), getActualType(handler.getInfo().getParameterType()));
+            });
+            Flux result = (Flux) handler.invoke(handler.getInfo().buildInvocationArguments(converted, null));
+            return result.map(o ->
+                    DefaultPayload.create(converter.write(o))
+            );
+        } catch (Exception e) {
+            return Flux.error(e);
+        }
+    }
+
+
+    private Converter converterFor(MimeType mimeType) {
+        return this.converters
+                .stream()
+                .filter(binaryConverter -> binaryConverter.accept(mimeType))
+                .findFirst()
+                .orElseThrow(IllegalStateException::new);
+    }
+
+    private MethodHandler handlerFor(JsonNode metadata) {
+        return this.mappingHandlers
+                .stream()
+                .filter(methodHandler -> {
+                    return methodHandler
+                            .getInfo()
+                            .getMappingInfo()
+                            .getPath().equals(metadata.get("PATH").asText());
+                })
+                .findFirst()
+                .orElseThrow(() -> {
+                    return new ApplicationErrorException("No handler found");
+                });
+    }
 
 }

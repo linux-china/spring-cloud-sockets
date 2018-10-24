@@ -39,13 +39,13 @@ public class ServiceMethodInfoTests {
 
 	@Test(expected = IllegalStateException.class)
 	public void failNotAnnotated() throws Exception {
-		Method m = ReflectionUtils.findMethod(ServiceInfoTest.class, "failNotAnnotated", null);
+		Method m = ReflectionUtils.findMethod(ServiceInfoTest.class, "failNotAnnotated");
 		ServiceMethodInfo serviceMethodInfo = new ServiceMethodInfo(m);
 	}
 
 	@Test(expected = IllegalStateException.class)
 	public void failNoArgument() throws Exception{
-		Method m = ReflectionUtils.findMethod(ServiceInfoTest.class, "failNoArgument", null);
+		Method m = ReflectionUtils.findMethod(ServiceInfoTest.class, "failNoArgument");
 		ServiceMethodInfo serviceMethodInfo = new ServiceMethodInfo(m);
 	}
 
@@ -63,32 +63,32 @@ public class ServiceMethodInfoTests {
 
 	@Test
 	public void multipleParameters() throws Exception {
-		Method m = ReflectionUtils.findMethod(ServiceInfoTest.class, "oneWayMultipleParameters", null);
+		Method m = ReflectionUtils.findMethod(ServiceInfoTest.class, "oneWayMultipleParameters");
 		ServiceMethodInfo serviceMethodInfo = new ServiceMethodInfo(m);
 		assertThat(String.class).isAssignableFrom(serviceMethodInfo.getParameterType().resolve());
 	}
 
 	@Test(expected = IllegalArgumentException.class)
 	public void requestOneWrongReturn() throws Exception {
-		Method m = ReflectionUtils.findMethod(ServiceInfoTest.class, "requestOneWrongReturn", null);
+		Method m = ReflectionUtils.findMethod(ServiceInfoTest.class, "requestOneWrongReturn");
 		ServiceMethodInfo serviceMethodInfo = new ServiceMethodInfo(m);
 	}
 
 	@Test(expected = IllegalStateException.class)
 	public void multipleParametersNotAnnotated() throws Exception {
-		Method m = ReflectionUtils.findMethod(ServiceInfoTest.class, "multipleParametersNotAnnotated", null);
+		Method m = ReflectionUtils.findMethod(ServiceInfoTest.class, "multipleParametersNotAnnotated");
 		ServiceMethodInfo serviceMethodInfo = new ServiceMethodInfo(m);
 	}
 
 	@Test(expected = IllegalStateException.class)
 	public void multiplePayloads() throws Exception {
-		Method m = ReflectionUtils.findMethod(ServiceInfoTest.class, "multiplePayloadAnnotations", null);
+		Method m = ReflectionUtils.findMethod(ServiceInfoTest.class, "multiplePayloadAnnotations");
 		ServiceMethodInfo serviceMethodInfo = new ServiceMethodInfo(m);
 	}
 
 	@Test
 	public void requestOneMapping() throws Exception {
-		Method m = ReflectionUtils.findMethod(ServiceInfoTest.class, "requestOneMapping", null);
+		Method m = ReflectionUtils.findMethod(ServiceInfoTest.class, "requestOneMapping");
 		ServiceMethodInfo serviceMethodInfo = new ServiceMethodInfo(m);
 		assertThat(String.class).isAssignableFrom(serviceMethodInfo.getReturnType().resolve());
 		assertThat(Integer.class).isAssignableFrom(serviceMethodInfo.getParameterType().resolve());
@@ -96,13 +96,13 @@ public class ServiceMethodInfoTests {
 
 	@Test(expected = IllegalArgumentException.class)
 	public void requestManyWrongReturn() throws Exception {
-		Method m = ReflectionUtils.findMethod(ServiceInfoTest.class, "requestManyWrongReturn", null);
+		Method m = ReflectionUtils.findMethod(ServiceInfoTest.class, "requestManyWrongReturn");
 		ServiceMethodInfo serviceMethodInfo = new ServiceMethodInfo(m);
 	}
 
 	@Test
 	public void requestMany() throws Exception {
-		Method m = ReflectionUtils.findMethod(ServiceInfoTest.class, "requestMany", null);
+		Method m = ReflectionUtils.findMethod(ServiceInfoTest.class, "requestMany");
 		ServiceMethodInfo serviceMethodInfo = new ServiceMethodInfo(m);
 		assertThat(Flux.class).isAssignableFrom(serviceMethodInfo.getReturnType().resolve());
 		assertThat(String.class).isAssignableFrom(serviceMethodInfo.getParameterType().resolve());
@@ -110,7 +110,7 @@ public class ServiceMethodInfoTests {
 
 	@Test
 	public void requestStream() throws Exception {
-		Method m = ReflectionUtils.findMethod(ServiceInfoTest.class, "requestStream", null);
+		Method m = ReflectionUtils.findMethod(ServiceInfoTest.class, "requestStream");
 		ServiceMethodInfo serviceMethodInfo = new ServiceMethodInfo(m);
 		assertThat(Flux.class).isAssignableFrom(serviceMethodInfo.getReturnType().resolve());
 		assertThat(Flux.class).isAssignableFrom(serviceMethodInfo.getParameterType().resolve());
@@ -118,19 +118,19 @@ public class ServiceMethodInfoTests {
 
 	@Test(expected = IllegalArgumentException.class)
 	public void requestStreamWrongReturn() throws Exception {
-		Method m = ReflectionUtils.findMethod(ServiceInfoTest.class, "requestStreamWrongReturn", null);
+		Method m = ReflectionUtils.findMethod(ServiceInfoTest.class, "requestStreamWrongReturn");
 		ServiceMethodInfo serviceMethodInfo = new ServiceMethodInfo(m);
 	}
 
 	@Test(expected = IllegalArgumentException.class)
 	public void requestStreamWrongParameter() throws Exception {
-		Method m = ReflectionUtils.findMethod(ServiceInfoTest.class, "requestStreamWrongParameter", null);
+		Method m = ReflectionUtils.findMethod(ServiceInfoTest.class, "requestStreamWrongParameter");
 		ServiceMethodInfo serviceMethodInfo = new ServiceMethodInfo(m);
 	}
 
 	@Test
 	public void requestStreamAnnotated() throws Exception {
-		Method m = ReflectionUtils.findMethod(ServiceInfoTest.class, "requestStreamAnnotated", null);
+		Method m = ReflectionUtils.findMethod(ServiceInfoTest.class, "requestStreamAnnotated");
 		ServiceMethodInfo serviceMethodInfo = new ServiceMethodInfo(m);
 		assertThat(Flux.class).isAssignableFrom(serviceMethodInfo.getReturnType().resolve());
 		assertThat(Flux.class).isAssignableFrom(serviceMethodInfo.getParameterType().resolve());
@@ -138,7 +138,7 @@ public class ServiceMethodInfoTests {
 
 	@Test
 	public void testParameterMapping() throws Exception {
-		Method m = ReflectionUtils.findMethod(ServiceInfoTest.class, "oneWayMultipleParameters", null);
+		Method m = ReflectionUtils.findMethod(ServiceInfoTest.class, "oneWayMultipleParameters");
 		ServiceMethodInfo serviceMethodInfo = new ServiceMethodInfo(m);
 		String payload  = "foo";
 		Object[] args = serviceMethodInfo.buildInvocationArguments(payload, null);
